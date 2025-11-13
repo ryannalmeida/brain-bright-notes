@@ -4,8 +4,8 @@ import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Plus, 
   Search, 
@@ -13,11 +13,17 @@ import {
   Menu, 
   X,
   FileText,
-  Sparkles
+  Sparkles,
+  Trash2,
+  Star,
+  BookOpen
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { MarkdownEditor } from "@/components/dashboard/MarkdownEditor";
+import { DeleteNoteDialog } from "@/components/dashboard/DeleteNoteDialog";
+import { TagManager } from "@/components/dashboard/TagManager";
 
 interface Note {
   id: string;
@@ -25,6 +31,7 @@ interface Note {
   content: string;
   tags: string[];
   user_id: string;
+  favorite: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +41,10 @@ const Dashboard = () => {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterFavorites, setFilterFavorites] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [isGeneratingTags, setIsGeneratingTags] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -131,10 +142,119 @@ const Dashboard = () => {
     }
   };
 
-  const filteredNotes = notes.filter(note =>
-    note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    note.content?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const deleteNote = async () => {
+    if (!selectedNote) return;
+
+    const { error } = await supabase
+      .from("notes")
+      .delete()
+      .eq("id", selectedNote.id);
+
+    if (error) {
+      toast({
+        title: "Error deleting note",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      setNotes(notes.filter(n => n.id !== selectedNote.id));
+      setSelectedNote(null);
+      setDeleteDialogOpen(false);
+      toast({
+        title: "Note deleted",
+        description: "Your note has been permanently deleted.",
+      });
+    }
+  };
+
+  const toggleFavorite = async () => {
+    if (!selectedNote) return;
+    await updateNote({ favorite: !selectedNote.favorite });
+    toast({
+      title: selectedNote.favorite ? "Removed from favorites" : "Added to favorites",
+      description: selectedNote.favorite 
+        ? "Note removed from your favorites" 
+        : "Note added to your favorites",
+    });
+  };
+
+  const summarizeNote = async () => {
+    if (!selectedNote?.content) {
+      toast({
+        title: "No content",
+        description: "Add some content to your note first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSummarizing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("summarize-note", {
+        body: { content: selectedNote.content },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Summary generated",
+        description: data.summary,
+        duration: 10000,
+      });
+    } catch (error) {
+      toast({
+        title: "Error generating summary",
+        description: error instanceof Error ? error.message : "Failed to generate summary",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
+  const generateTags = async () => {
+    if (!selectedNote?.content && !selectedNote?.title) {
+      toast({
+        title: "No content",
+        description: "Add a title or content to your note first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGeneratingTags(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("suggest-tags", {
+        body: { 
+          title: selectedNote.title,
+          content: selectedNote.content || ""
+        },
+      });
+
+      if (error) throw error;
+
+      await updateNote({ tags: data.tags });
+      toast({
+        title: "Tags generated",
+        description: `Added ${data.tags.length} tags to your note`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error generating tags",
+        description: error instanceof Error ? error.message : "Failed to generate tags",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingTags(false);
+    }
+  };
+
+  const filteredNotes = notes.filter(note => {
+    const matchesSearch = note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      note.content?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFavorite = !filterFavorites || note.favorite;
+    return matchesSearch && matchesFavorite;
+  });
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -184,6 +304,20 @@ const Dashboard = () => {
               />
             </div>
 
+            {/* Filter Buttons */}
+            <Tabs value={filterFavorites ? "favorites" : "all"} onValueChange={(v) => setFilterFavorites(v === "favorites")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="all">
+                  <BookOpen className="w-4 h-4 mr-2" />
+                  All Notes
+                </TabsTrigger>
+                <TabsTrigger value="favorites">
+                  <Star className="w-4 h-4 mr-2" />
+                  Favorites
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
             {/* New Note Button */}
             <Button variant="hero" className="w-full justify-start" onClick={createNewNote}>
               <Plus className="w-4 h-4 mr-2" />
@@ -200,20 +334,30 @@ const Dashboard = () => {
                   }`}
                   onClick={() => setSelectedNote(note)}
                 >
-                  <h3 className="font-semibold mb-1 line-clamp-1">{note.title}</h3>
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-semibold mb-1 line-clamp-1 flex-1">{note.title}</h3>
+                    {note.favorite && <Star className="w-4 h-4 fill-primary text-primary flex-shrink-0" />}
+                  </div>
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {note.content}
                   </p>
-                  <div className="flex gap-1 mt-2 flex-wrap">
-                    {note.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
+                  {note.tags.length > 0 && (
+                    <div className="flex gap-1 mt-2 flex-wrap">
+                      {note.tags.slice(0, 3).map((tag) => (
+                        <span
+                          key={tag}
+                          className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                      {note.tags.length > 3 && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                          +{note.tags.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </Card>
               ))}
             </div>
@@ -229,37 +373,54 @@ const Dashboard = () => {
               className="flex-1 flex flex-col p-6 overflow-auto"
             >
               <div className="max-w-4xl mx-auto w-full space-y-4">
-                <div className="flex justify-between items-start">
+                {/* Title and Actions */}
+                <div className="flex justify-between items-start gap-4">
                   <Input
                     value={selectedNote.title}
                     onChange={(e) => updateNote({ title: e.target.value })}
-                    className="text-3xl font-bold border-none shadow-none p-0 focus-visible:ring-0"
+                    className="text-3xl font-bold border-none shadow-none p-0 focus-visible:ring-0 flex-1"
                     placeholder="Note title..."
                   />
-                  <Button variant="outline" size="sm">
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    AI Summarize
-                  </Button>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={toggleFavorite}
+                    >
+                      <Star className={`w-4 h-4 ${selectedNote.favorite ? 'fill-primary text-primary' : ''}`} />
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={summarizeNote}
+                      disabled={isSummarizing}
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      {isSummarizing ? "Summarizing..." : "Summarize"}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setDeleteDialogOpen(true)}
+                    >
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </div>
                 </div>
 
-                <Textarea
+                {/* Markdown Editor */}
+                <MarkdownEditor
                   value={selectedNote.content || ""}
-                  onChange={(e) => updateNote({ content: e.target.value })}
-                  className="min-h-[500px] resize-none border-none shadow-none text-lg p-0 focus-visible:ring-0"
-                  placeholder="Start writing your note..."
+                  onChange={(value) => updateNote({ content: value })}
                 />
 
-                <div className="flex gap-2 items-center text-sm text-muted-foreground">
-                  <span>Tags:</span>
-                  {selectedNote.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="px-2 py-1 rounded-md bg-primary/10 text-primary"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
+                {/* Tag Manager */}
+                <TagManager
+                  tags={selectedNote.tags}
+                  onTagsChange={(tags) => updateNote({ tags })}
+                  onGenerateTags={generateTags}
+                  isGenerating={isGeneratingTags}
+                />
               </div>
             </motion.div>
           ) : (
@@ -279,6 +440,16 @@ const Dashboard = () => {
           )}
         </main>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {selectedNote && (
+        <DeleteNoteDialog
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
+          onConfirm={deleteNote}
+          noteTitle={selectedNote.title}
+        />
+      )}
     </div>
   );
 };

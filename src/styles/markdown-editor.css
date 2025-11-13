@@ -1,0 +1,100 @@
+/* Markdown Editor Styles */
+.markdown-editor .EasyMDEContainer {
+  background: transparent;
+}
+
+.markdown-editor .EasyMDEContainer .CodeMirror {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  border: none;
+  border-radius: var(--radius);
+  font-size: 16px;
+  line-height: 1.6;
+  padding: 1rem;
+  min-height: 500px;
+}
+
+.markdown-editor .editor-toolbar {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 0.5rem;
+}
+
+.markdown-editor .editor-toolbar button {
+  color: hsl(var(--foreground)) !important;
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  padding: 0.25rem 0.5rem;
+  transition: all 0.2s;
+}
+
+.markdown-editor .editor-toolbar button:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground)) !important;
+}
+
+.markdown-editor .editor-toolbar button.active {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+.markdown-editor .editor-toolbar i.separator {
+  border-left: 1px solid hsl(var(--border));
+  border-right: none;
+}
+
+.markdown-editor .CodeMirror-cursor {
+  border-left: 2px solid hsl(var(--primary));
+}
+
+.markdown-editor .CodeMirror-selected {
+  background: hsl(var(--accent)) !important;
+}
+
+.markdown-editor .editor-preview,
+.markdown-editor .editor-preview-side {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  padding: 1rem;
+  border: 1px solid hsl(var(--border));
+}
+
+.markdown-editor .editor-preview h1,
+.markdown-editor .editor-preview-side h1 {
+  color: hsl(var(--foreground));
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.markdown-editor .editor-preview h2,
+.markdown-editor .editor-preview-side h2 {
+  color: hsl(var(--foreground));
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.markdown-editor .editor-preview a,
+.markdown-editor .editor-preview-side a {
+  color: hsl(var(--primary));
+}
+
+.markdown-editor .editor-preview code,
+.markdown-editor .editor-preview-side code {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  padding: 0.2rem 0.4rem;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.markdown-editor .editor-preview pre,
+.markdown-editor .editor-preview-side pre {
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.markdown-editor .CodeMirror-scroll {
+  min-height: 500px;
+}

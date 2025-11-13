@@ -1,1 +1,7 @@
 project_id = "vpxhsgrybbmyykgmsuxs"
+
+[functions.summarize-note]
+verify_jwt = true
+
+[functions.suggest-tags]
+verify_jwt = true
