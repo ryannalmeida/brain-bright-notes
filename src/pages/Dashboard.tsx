@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -15,28 +15,126 @@ import {
   FileText,
   Sparkles
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface Note {
   id: string;
   title: string;
   content: string;
   tags: string[];
-  createdAt: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
 }
 
 const Dashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
-  const [notes] = useState<Note[]>([
-    {
-      id: "1",
-      title: "Welcome to NeuroNotes",
-      content: "This is your first note. Start writing and let AI help organize your thoughts!",
-      tags: ["welcome", "getting-started"],
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    // Check authentication
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate("/auth");
+      }
+    });
+
+    // Set up auth listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || !session) {
+        navigate("/auth");
+      }
+    });
+
+    loadNotes();
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const loadNotes = async () => {
+    const { data, error } = await supabase
+      .from("notes")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      toast({
+        title: "Error loading notes",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      setNotes(data || []);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
+  };
+
+  const createNewNote = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("notes")
+      .insert({
+        user_id: user.id,
+        title: "Untitled Note",
+        content: "",
+        tags: [],
+      })
+      .select()
+      .single();
+
+    if (error) {
+      toast({
+        title: "Error creating note",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      setNotes([data, ...notes]);
+      setSelectedNote(data);
+      toast({
+        title: "Note created",
+        description: "Start writing your thoughts!",
+      });
+    }
+  };
+
+  const updateNote = async (updates: Partial<Note>) => {
+    if (!selectedNote) return;
+
+    const { error } = await supabase
+      .from("notes")
+      .update(updates)
+      .eq("id", selectedNote.id);
+
+    if (error) {
+      toast({
+        title: "Error updating note",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      const updatedNote = { ...selectedNote, ...updates };
+      setSelectedNote(updatedNote);
+      setNotes(notes.map(n => n.id === selectedNote.id ? updatedNote : n));
+    }
+  };
+
+  const filteredNotes = notes.filter(note =>
+    note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    note.content?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -57,10 +155,8 @@ const Dashboard = () => {
 
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Button variant="ghost" size="icon" asChild>
-              <Link to="/">
-                <LogOut className="w-5 h-5" />
-              </Link>
+            <Button variant="ghost" size="icon" onClick={handleSignOut}>
+              <LogOut className="w-5 h-5" />
             </Button>
           </div>
         </div>
@@ -83,18 +179,20 @@ const Dashboard = () => {
               <Input
                 placeholder="Search notes..."
                 className="pl-10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
 
             {/* New Note Button */}
-            <Button variant="hero" className="w-full justify-start">
+            <Button variant="hero" className="w-full justify-start" onClick={createNewNote}>
               <Plus className="w-4 h-4 mr-2" />
               New Note
             </Button>
 
             {/* Notes List */}
             <div className="flex-1 overflow-y-auto space-y-2">
-              {notes.map((note) => (
+              {filteredNotes.map((note) => (
                 <Card
                   key={note.id}
                   className={`p-4 cursor-pointer transition-smooth hover:card-shadow ${
@@ -134,6 +232,7 @@ const Dashboard = () => {
                 <div className="flex justify-between items-start">
                   <Input
                     value={selectedNote.title}
+                    onChange={(e) => updateNote({ title: e.target.value })}
                     className="text-3xl font-bold border-none shadow-none p-0 focus-visible:ring-0"
                     placeholder="Note title..."
                   />
@@ -144,7 +243,8 @@ const Dashboard = () => {
                 </div>
 
                 <Textarea
-                  value={selectedNote.content}
+                  value={selectedNote.content || ""}
+                  onChange={(e) => updateNote({ content: e.target.value })}
                   className="min-h-[500px] resize-none border-none shadow-none text-lg p-0 focus-visible:ring-0"
                   placeholder="Start writing your note..."
                 />
@@ -170,7 +270,7 @@ const Dashboard = () => {
                 <p className="text-muted-foreground mb-6">
                   Select a note from the sidebar or create a new one to get started.
                 </p>
-                <Button variant="hero">
+                <Button variant="hero" onClick={createNewNote}>
                   <Plus className="w-4 h-4 mr-2" />
                   Create Your First Note
                 </Button>
